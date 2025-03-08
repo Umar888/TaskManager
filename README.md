@@ -1,9 +1,9 @@
-📌 Task Manager - Android Application
+**📌 Task Manager - Android Application**
 
 A Task Manager app built with Jetpack Compose, sorting, filtering, haptic feedback, swipe actions, and smooth animations.
 
 
-🚀 Features
+**🚀 Features**
 
 ✅ Task Creation & Management – Add, edit, and delete tasks.
 
@@ -24,7 +24,7 @@ A Task Manager app built with Jetpack Compose, sorting, filtering, haptic feedba
 ✅ Modern UI – Built with Jetpack Compose.
 
 
-📦 Tech Stack
+**📦 Tech Stack**
 
 Kotlin – Primary language
 
@@ -39,7 +39,7 @@ Navigation Component – Multi-screen navigation
 Coroutines & Flow – Asynchronous operations
 
 
-🛠️ Setup Instructions
+**🛠️ Setup Instructions**
 
 1️⃣ Clone the Repository
 
@@ -62,7 +62,7 @@ Connect a physical device or emulator.
 Click Run ▶ in Android Studio.
 
 
-Design Rationale
+**Design Rationale**
 
 🌟 1. Jetpack Compose for UI
 
@@ -117,7 +117,7 @@ Uses Flow & LiveData to reactively update UI.
 Ensures data persistence even after app restarts.
 
 
-APK File for Testing: 
+**APK File for Testing** 
 
 https://drive.google.com/file/d/1KGY56p5Od076wqvRQbsID3YjijQRfwqb/view
 
