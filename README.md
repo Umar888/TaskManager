@@ -107,12 +107,17 @@ SwipeableActionsBox provides intuitive interactions.
 
 <img width="372" alt="Screenshot 2025-03-08 at 12 04 10 PM" src="https://github.com/user-attachments/assets/b9350c8a-f1a7-4b86-9ffe-7d8e6e3e241b" />
 
-APK File for Testing: 
-https://drive.google.com/file/d/1KGY56p5Od076wqvRQbsID3YjijQRfwqb/view
-
-
 
 📅 5. Room Database for Persistence
+
 Stores tasks locally using Room.
+
 Uses Flow & LiveData to reactively update UI.
+
 Ensures data persistence even after app restarts.
+
+
+APK File for Testing: 
+
+https://drive.google.com/file/d/1KGY56p5Od076wqvRQbsID3YjijQRfwqb/view
+
