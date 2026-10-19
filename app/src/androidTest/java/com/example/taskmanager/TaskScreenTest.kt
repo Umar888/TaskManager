@@ -1,23 +1,22 @@
 package com.example.taskmanager
 
-import android.app.Application
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.hasParent
-import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.example.taskmanager.ui.screen.AddTaskScreen
-import com.example.taskmanager.ui.screen.TaskListScreen
-import com.example.taskmanager.viewModel.FakeTaskViewModel
+import com.example.taskmanager.ui.navigation.Screen
+import com.example.taskmanager.ui.editor.TaskEditorScreen
+import com.example.taskmanager.ui.tasks.TaskListScreen
+import com.example.taskmanager.ui.theme.AppTheme
+import com.example.taskmanager.ui.tasks.TaskViewModel
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -29,163 +28,117 @@ class TaskScreenTest {
     @get:Rule
     val composeTestRule = createComposeRule()
 
-    private lateinit var fakeViewModel: FakeTaskViewModel
-
+    private lateinit var viewModel: TaskViewModel
 
     @Before
     fun setup() {
-        val application = ApplicationProvider.getApplicationContext<Application>()
-        fakeViewModel = FakeTaskViewModel(application)
-    }
-
-
-
-
-    @Test
-    fun testTaskFlow() {
+        viewModel = TaskViewModel(FakeTaskRepository())
         composeTestRule.setContent {
-            val navController = rememberNavController()
-
-            NavHost(
-                navController = navController,
-                startDestination = "task_list"
-            ) {
-                composable("task_list") {
-                    TaskListScreen(navController = navController, viewModel = fakeViewModel)
-                }
-                composable("add_task") {
-                    AddTaskScreen(navController = navController, viewModel = fakeViewModel)
+            AppTheme {
+                val navController = rememberNavController()
+                NavHost(navController = navController, startDestination = Screen.TaskList.route) {
+                    composable(Screen.TaskList.route) { TaskListScreen(navController, viewModel) }
+                    composable(Screen.AddTask.route) { TaskEditorScreen(navController, viewModel, taskId = null) }
+                    composable(Screen.TaskDetail.route) { entry ->
+                        TaskEditorScreen(navController, viewModel, entry.arguments!!.getString("taskId")!!.toInt())
+                    }
                 }
             }
         }
-
-        // create task 1
-
-        composeTestRule.onNodeWithTag("AddTask").performClick()
-        composeTestRule.onNodeWithText("Title *").performTextInput("Mobile App")
-        composeTestRule.onNodeWithText("Description").performTextInput("This is mobile application task.")
-        composeTestRule.onNodeWithTag("PriorityDropdown").performClick()
-        composeTestRule.onNodeWithText("High").performClick()
-        composeTestRule.onNodeWithTag("DatePickerField").performClick()
-        composeTestRule.onNodeWithTag("DatePickerOK").performClick()
-        composeTestRule.onNodeWithText("Save Task").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Mobile App").assertExists()
-
-        // create task 2
-
-        composeTestRule.onNodeWithTag("AddTask").performClick()
-        composeTestRule.onNodeWithText("Title *").performTextInput("Web App")
-        composeTestRule.onNodeWithText("Description").performTextInput("This is web application task.")
-        composeTestRule.onNodeWithTag("PriorityDropdown").performClick()
-        composeTestRule.onNode(
-            hasText("Medium") and hasParent(hasTestTag("PriorityDropdown"))
-        ).performClick()
-
-        composeTestRule.onNodeWithTag("DatePickerField").performClick()
-        composeTestRule.onNodeWithTag("DatePickerOK").performClick()
-        composeTestRule.onNodeWithText("Save Task").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Web App").assertExists()
-
-        // create task 3
-
-        composeTestRule.onNodeWithTag("AddTask").performClick()
-        composeTestRule.onNodeWithText("Title *").performTextInput("SEO")
-        composeTestRule.onNodeWithText("Description").performTextInput("This is SEO task.")
-        composeTestRule.onNodeWithTag("PriorityDropdown").performClick()
-        composeTestRule.onNodeWithText("Low").performClick()
-        composeTestRule.onNodeWithTag("DatePickerField").performClick()
-        composeTestRule.onNodeWithTag("DatePickerOK").performClick()
-        composeTestRule.onNodeWithText("Save Task").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("SEO").assertExists()
-
-        // Priority Filtering
-
-        composeTestRule.onNodeWithTag("PriorityFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("PriorityOption_High").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Mobile App").assertExists()
-
-        composeTestRule.onNodeWithTag("PriorityFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("PriorityOption_Medium").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Web App").assertExists()
-
-        composeTestRule.onNodeWithTag("PriorityFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("PriorityOption_Low").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("SEO").assertExists()
-        composeTestRule.onNodeWithTag("PriorityFiltering").performClick()
-        composeTestRule.onNodeWithTag("PriorityOption_All").performClick()
-        composeTestRule.waitForIdle()
-        Thread.sleep(1000)
-
-        // Status Filtering
-
-        composeTestRule.onNodeWithTag("StatusFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("StatusOption_Completed").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Stay productive! Start by adding a new task.").assertExists()
-
-        composeTestRule.onNodeWithTag("StatusFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("StatusOption_Pending").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Web App").assertExists()
-
-        composeTestRule.onNodeWithTag("StatusFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("StatusOption_In Progress").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Stay productive! Start by adding a new task.").assertExists()
-        composeTestRule.onNodeWithTag("StatusFiltering").performClick()
-        composeTestRule.onNodeWithTag("StatusOption_All").performClick()
-
-        // Sort Filtering
-
-        composeTestRule.onNodeWithTag("SortFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("SortOption_Latest").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-
-        composeTestRule.onNodeWithTag("TaskItem_0")
-            .assertTextContains("Mobile App")
-
-        composeTestRule.onNodeWithTag("SortFiltering").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-
-        composeTestRule.onNodeWithTag("SortOption_Oldest").performClick()
-        Thread.sleep(1000)
-        composeTestRule.waitForIdle()
-
-        composeTestRule.onNodeWithTag("TaskItem_0")
-            .assertTextContains("SEO")
-
     }
 
+    private fun addTask(title: String, description: String, priority: String) {
+        composeTestRule.onNodeWithTag("AddTask").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("TitleField").performTextInput(title)
+        composeTestRule.onNodeWithTag("DescriptionField").performTextInput(description)
+        composeTestRule.onNodeWithTag("EditorPriority_$priority").performClick()
+        composeTestRule.onNodeWithTag("DatePickerField").performClick()
+        composeTestRule.onNodeWithTag("DatePickerOK").performClick()
+        composeTestRule.onNodeWithTag("SaveTask").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText(title).assertExists()
+    }
 
+    private fun pick(menuTag: String, optionTag: String) {
+        composeTestRule.onNodeWithTag(menuTag).performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag(optionTag).performClick()
+        composeTestRule.waitForIdle()
+    }
+
+    @Test
+    fun emptyState_isShownWithoutTasks() {
+        composeTestRule.onNodeWithText("Stay productive! Start by adding a new task.").assertIsDisplayed()
+    }
+
+    @Test
+    fun saveWithoutTitle_showsValidationError() {
+        composeTestRule.onNodeWithTag("AddTask").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("SaveTask").performClick()
+        composeTestRule.onNodeWithText("Title is required").assertIsDisplayed()
+    }
+
+    @Test
+    fun createFilterAndSortTasks() {
+        addTask("Mobile App", "This is mobile application task.", "High")
+        addTask("Web App", "This is web application task.", "Medium")
+        addTask("SEO", "This is SEO task.", "Low")
+
+        // priority filter
+        pick("PriorityFiltering", "PriorityOption_High")
+        composeTestRule.onNodeWithText("Mobile App").assertExists()
+        composeTestRule.onNodeWithText("Web App").assertDoesNotExist()
+        pick("PriorityFiltering", "PriorityOption_All")
+
+        // status filter: nothing completed yet
+        composeTestRule.onNodeWithTag("StatusOption_Completed").performClick()
+        composeTestRule.onNodeWithText("No matching tasks").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Clear filters").performClick()
+        composeTestRule.onNodeWithText("SEO").assertExists()
+
+        // sorting
+        pick("SortFiltering", "SortOption_PRIORITY")
+        composeTestRule.onNodeWithTag("TaskItem_0").assertTextContains("Mobile App")
+        pick("SortFiltering", "SortOption_NEWEST")
+        composeTestRule.onNodeWithTag("TaskItem_0").assertTextContains("SEO")
+
+        // search matches the description too
+        composeTestRule.onNodeWithTag("SearchButton").performClick()
+        composeTestRule.onNodeWithTag("SearchField").performTextInput("web application")
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Web App").assertExists()
+        composeTestRule.onNodeWithText("SEO").assertDoesNotExist()
+    }
+
+    @Test
+    fun completingTask_movesItToCompletedFilter() {
+        addTask("Write report", "Quarterly numbers", "High")
+
+        composeTestRule.onNodeWithTag("TaskCheck_0").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("StatusOption_Completed").performClick()
+        composeTestRule.onNodeWithText("Write report").assertExists()
+    }
+
+    @Test
+    fun editAndDeleteTask() {
+        addTask("Old title", "Some details", "Low")
+
+        composeTestRule.onNodeWithText("Old title").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("TitleField").performTextReplacement("Old title updated")
+        composeTestRule.onNodeWithTag("SaveTask").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Old title updated").assertExists()
+
+        composeTestRule.onNodeWithText("Old title updated").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("DeleteTask").performClick()
+        composeTestRule.onNodeWithTag("ConfirmDelete").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Old title updated").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Undo").assertExists()
+    }
 }

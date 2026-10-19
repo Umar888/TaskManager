@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- dark window background so there's no white flash on launch in dark mode -->
+    <style name="Theme.TaskManager" parent="android:Theme.Material.NoActionBar" />
+
+</resources>
