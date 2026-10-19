@@ -78,6 +78,11 @@ object DateUtils {
     fun formatTime(millis: Long): String =
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(millis))
 
+    fun formatDateTime(millis: Long): String = formatShortDate(millis) + ", " + formatTime(millis)
+
+    fun formatLongDay(millis: Long): String =
+        SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date(millis))
+
     /** Default due date for a new task: end of today, so it doesn't instantly show as overdue. */
     fun defaultDueDate(now: Long = System.currentTimeMillis()): Long = withTime(now, 23, 59)
 }

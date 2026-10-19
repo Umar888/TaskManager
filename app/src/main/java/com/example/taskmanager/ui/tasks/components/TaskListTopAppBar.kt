@@ -39,6 +39,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.taskmanager.R
+import com.example.taskmanager.util.DateUtils
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -71,7 +72,7 @@ fun TaskListTopAppBar(
 
     var menuOpen by remember { mutableStateOf(false) }
     LargeTopAppBar(
-        title = { Text(stringResource(R.string.my_tasks), fontWeight = FontWeight.Bold) },
+        title = { Text(greeting(), fontWeight = FontWeight.Bold) },
         actions = {
             IconButton(onClick = { onToggleSearch(true) }, modifier = Modifier.testTag("SearchButton")) {
                 Icon(Icons.Default.Search, contentDescription = stringResource(R.string.search))
@@ -100,6 +101,15 @@ fun TaskListTopAppBar(
         scrollBehavior = scrollBehavior,
     )
 }
+
+@Composable
+private fun greeting(): String = stringResource(
+    when (DateUtils.hourOf(System.currentTimeMillis())) {
+        in 5..11 -> R.string.greeting_morning
+        in 12..17 -> R.string.greeting_afternoon
+        else -> R.string.greeting_evening
+    }
+)
 
 @Composable
 private fun TaskSearchBar(searchQuery: String, onSearchQueryChange: (String) -> Unit) {

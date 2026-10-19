@@ -66,12 +66,33 @@ data class TaskFilters(
         .sortedWith(compareBy<Task> { it.isCompleted }.then(sort.comparator))
 }
 
+/** Buckets for the default (due soonest) view, in display order. */
+enum class TaskSection { OVERDUE, TODAY, TOMORROW, UPCOMING, COMPLETED }
+
+/** Groups an already filtered and sorted list, keeping the order within each section. Empty sections are dropped. */
+fun groupIntoSections(tasks: List<Task>, now: Long): List<Pair<TaskSection, List<Task>>> {
+    val tomorrow = DateUtils.startOfDay(now, 1)
+    return tasks
+        .groupBy { task ->
+            when {
+                task.isCompleted -> TaskSection.COMPLETED
+                task.isOverdue(now) -> TaskSection.OVERDUE
+                DateUtils.isSameDay(task.dueDate, now) -> TaskSection.TODAY
+                DateUtils.isSameDay(task.dueDate, tomorrow) -> TaskSection.TOMORROW
+                else -> TaskSection.UPCOMING
+            }
+        }
+        .toSortedMap()
+        .map { (section, list) -> section to list }
+}
+
 data class TaskStats(
     val total: Int = 0,
     val pending: Int = 0,
     val inProgress: Int = 0,
     val completed: Int = 0,
     val overdue: Int = 0,
+    val dueToday: Int = 0,
 ) {
     val progress: Float get() = if (total == 0) 0f else completed.toFloat() / total
 
@@ -82,6 +103,7 @@ data class TaskStats(
             inProgress = tasks.count { it.statusType == TaskStatus.IN_PROGRESS },
             completed = tasks.count { it.isCompleted },
             overdue = tasks.count { it.isOverdue(now) },
+            dueToday = tasks.count { !it.isCompleted && !it.isOverdue(now) && DateUtils.isSameDay(it.dueDate, now) },
         )
     }
 }

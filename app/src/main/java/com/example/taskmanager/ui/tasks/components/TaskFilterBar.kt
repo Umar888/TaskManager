@@ -1,5 +1,6 @@
 package com.example.taskmanager.ui.tasks.components
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,6 +12,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -41,9 +44,10 @@ fun TaskFilterBar(
     onPriorityChange: (TaskPriority?) -> Unit,
     onDateChange: (DateFilter) -> Unit,
     onSortChange: (SortOrder) -> Unit,
+    onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Column(modifier = modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
         // status as one-tap chips since it's the filter people reach for most
         Row(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -99,6 +103,14 @@ fun TaskFilterBar(
                 isSelected = { it == filters.sort },
                 onSelect = onSortChange
             )
+            AnimatedVisibility(visible = filters.isActive && filters.query.isBlank()) {
+                AssistChip(
+                    onClick = onClearFilters,
+                    label = { Text(stringResource(R.string.reset_filters)) },
+                    leadingIcon = { Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                    modifier = Modifier.testTag("ClearFiltersChip")
+                )
+            }
         }
     }
 }

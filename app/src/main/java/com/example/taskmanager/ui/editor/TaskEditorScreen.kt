@@ -1,9 +1,15 @@
 package com.example.taskmanager.ui.editor
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,26 +19,34 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -41,6 +55,8 @@ import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberDatePickerState
@@ -50,29 +66,47 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.example.taskmanager.R
+import com.example.taskmanager.data.model.Checklist
+import com.example.taskmanager.data.model.ChecklistItem
+import com.example.taskmanager.data.model.RepeatRule
 import com.example.taskmanager.data.model.Task
 import com.example.taskmanager.data.model.TaskPriority
 import com.example.taskmanager.data.model.TaskStatus
+import com.example.taskmanager.reminder.ReminderNotifications
 import com.example.taskmanager.util.DateUtils
 import com.example.taskmanager.ui.theme.TaskColors
 import com.example.taskmanager.ui.tasks.TaskViewModel
 import kotlinx.coroutines.flow.flowOf
 import java.util.Calendar
+
+/** Reminder choices in minutes before the due time; null = no reminder. */
+private val reminderOptions = listOf(null, 0, 10, 60, 24 * 60)
+
+private val ChecklistSaver = listSaver<List<ChecklistItem>, String>(
+    save = { items -> items.map { (if (it.done) "x" else " ") + it.text } },
+    restore = { saved -> saved.map { ChecklistItem(text = it.drop(1), done = it.first() == 'x') } }
+)
 
 /** Add (taskId == null) and edit share one form so the two can't drift apart again. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,6 +120,9 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
     var priority by rememberSaveable { mutableStateOf(TaskPriority.MEDIUM) }
     var status by rememberSaveable { mutableStateOf(TaskStatus.PENDING) }
     var dueDate by rememberSaveable { mutableStateOf(DateUtils.defaultDueDate()) }
+    var reminderMinutes by rememberSaveable { mutableStateOf<Int?>(null) }
+    var repeat by rememberSaveable { mutableStateOf(RepeatRule.NONE) }
+    var checklist by rememberSaveable(stateSaver = ChecklistSaver) { mutableStateOf(emptyList<ChecklistItem>()) }
     var loaded by rememberSaveable { mutableStateOf(taskId == null) }
     var showTitleError by rememberSaveable { mutableStateOf(false) }
 
@@ -94,6 +131,11 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     val keyboard = LocalSoftwareKeyboardController.current
+    val context = LocalContext.current
+    var notificationsAllowed by remember { mutableStateOf(ReminderNotifications.canPost(context)) }
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        notificationsAllowed = granted
+    }
 
     // fill the form once when the task arrives, then leave the user's edits alone
     LaunchedEffect(existing) {
@@ -104,6 +146,9 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
             priority = task.priorityLevel
             status = task.statusType
             dueDate = task.dueDate
+            reminderMinutes = task.reminderMinutes
+            repeat = task.repeatRule
+            checklist = task.checklistItems
             loaded = true
         }
     }
@@ -115,9 +160,12 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
         priority = priority.toString(),
         dueDate = dueDate,
         status = status.toString(),
+        reminderMinutes = reminderMinutes,
+        repeat = repeat.toString(),
+        checklist = Checklist.encode(checklist),
     )
     val hasChanges = if (taskId == null) {
-        title.isNotBlank() || description.isNotBlank()
+        title.isNotBlank() || description.isNotBlank() || checklist.any { it.text.isNotBlank() }
     } else {
         existing?.let { it.copy(description = it.description?.ifBlank { null }) != draft } ?: false
     }
@@ -136,9 +184,19 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
         close()
     }
 
+    fun chooseReminder(minutes: Int?) {
+        reminderMinutes = minutes
+        if (minutes != null && !notificationsAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     BackHandler(enabled = hasChanges) { showDiscardDialog = true }
 
+    // imePadding on the whole Scaffold (not just the button) so the scroll area ends above the keyboard
+    // and fields near the bottom can still be scrolled into view while typing
     Scaffold(
+        modifier = Modifier.imePadding(),
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(if (taskId == null) R.string.new_task else R.string.edit_task)) },
@@ -160,13 +218,12 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
             Surface(tonalElevation = 3.dp) {
                 Button(
                     onClick = ::save,
-                    shape = RoundedCornerShape(16.dp),
+                    shape = MaterialTheme.shapes.medium,
                     modifier = Modifier
                         .fillMaxWidth()
                         .navigationBarsPadding()
-                        .imePadding()
                         .padding(16.dp)
-                        .height(52.dp)
+                        .height(56.dp)
                         .testTag("SaveTask")
                 ) {
                     Text(stringResource(R.string.save_task), style = MaterialTheme.typography.titleMedium)
@@ -179,61 +236,70 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
                 .padding(padding)
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            OutlinedTextField(
+            // big, borderless title + notes, like a note-taking app; the cards below hold the structured fields
+            TextField(
                 value = title,
                 onValueChange = {
                     title = it
                     if (it.isNotBlank()) showTitleError = false
                 },
-                label = { Text(stringResource(R.string.title_label)) },
+                placeholder = { Text(stringResource(R.string.title_placeholder), style = MaterialTheme.typography.headlineSmall) },
                 isError = showTitleError,
                 supportingText = if (showTitleError) {
                     { Text(stringResource(R.string.title_required)) }
                 } else null,
-                singleLine = true,
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next),
-                textStyle = MaterialTheme.typography.titleMedium,
-                shape = RoundedCornerShape(14.dp),
+                textStyle = MaterialTheme.typography.headlineSmall,
+                colors = bareFieldColors(),
+                maxLines = 3,
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("TitleField")
             )
 
-            OutlinedTextField(
+            TextField(
                 value = description,
                 onValueChange = { description = it },
-                label = { Text(stringResource(R.string.description_label)) },
+                placeholder = { Text(stringResource(R.string.description_placeholder)) },
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
-                minLines = 3,
+                textStyle = MaterialTheme.typography.bodyLarge,
+                colors = bareFieldColors(),
+                minLines = 2,
                 maxLines = 8,
-                shape = RoundedCornerShape(14.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .testTag("DescriptionField")
             )
 
-            Section(stringResource(R.string.priority)) {
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    TaskPriority.entries.forEachIndexed { index, option ->
+            EditorCard(stringResource(R.string.details)) {
+                FieldLabel(stringResource(R.string.priority))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    TaskPriority.entries.forEach { option ->
                         val color = TaskColors.priority(option)
-                        SegmentedButton(
+                        FilterChip(
                             selected = priority == option,
                             onClick = { priority = option },
-                            shape = SegmentedButtonDefaults.itemShape(index, TaskPriority.entries.size),
-                            colors = SegmentedButtonDefaults.colors(
-                                activeContainerColor = color.copy(alpha = 0.18f),
-                                activeContentColor = color,
+                            label = { Text(option.displayName) },
+                            leadingIcon = {
+                                Icon(painterResource(R.drawable.ic_flag), contentDescription = null, modifier = Modifier.size(18.dp))
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                iconColor = color,
+                                selectedContainerColor = color.copy(alpha = 0.18f),
+                                selectedLabelColor = color,
+                                selectedLeadingIconColor = color,
                             ),
-                            modifier = Modifier.testTag("EditorPriority_${option.displayName}")
-                        ) { Text(option.displayName) }
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("EditorPriority_${option.displayName}")
+                        )
                     }
                 }
-            }
-
-            Section(stringResource(R.string.status)) {
+                Spacer(Modifier.height(16.dp))
+                FieldLabel(stringResource(R.string.status))
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     TaskStatus.entries.forEachIndexed { index, option ->
                         SegmentedButton(
@@ -246,12 +312,12 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
                 }
             }
 
-            Section(stringResource(R.string.due)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.fillMaxWidth()) {
+            EditorCard(stringResource(R.string.schedule)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                     PickerCard(
                         label = stringResource(R.string.due_date),
                         value = DateUtils.formatDate(dueDate),
-                        icon = Icons.Default.DateRange,
+                        icon = rememberVectorPainter(Icons.Default.DateRange),
                         onClick = { showDatePicker = true },
                         modifier = Modifier
                             .weight(1.4f)
@@ -260,7 +326,7 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
                     PickerCard(
                         label = stringResource(R.string.due_time),
                         value = DateUtils.formatTime(dueDate),
-                        icon = Icons.Default.Notifications,
+                        icon = painterResource(R.drawable.ic_schedule),
                         onClick = { showTimePicker = true },
                         modifier = Modifier
                             .weight(1f)
@@ -268,20 +334,56 @@ fun TaskEditorScreen(navController: NavController, viewModel: TaskViewModel, tas
                     )
                 }
                 Spacer(Modifier.height(8.dp))
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.horizontalScroll(rememberScrollState())
-                ) {
+                ChipRow {
                     val now = System.currentTimeMillis()
-                    QuickDateChip(stringResource(R.string.quick_today)) { dueDate = keepTime(dueDate, now) }
-                    QuickDateChip(stringResource(R.string.quick_tomorrow)) {
-                        dueDate = keepTime(dueDate, DateUtils.plus(now, Calendar.DAY_OF_YEAR, 1))
+                    AssistChip(onClick = { dueDate = keepTime(dueDate, now) }, label = { Text(stringResource(R.string.quick_today)) })
+                    AssistChip(
+                        onClick = { dueDate = keepTime(dueDate, DateUtils.plus(now, Calendar.DAY_OF_YEAR, 1)) },
+                        label = { Text(stringResource(R.string.quick_tomorrow)) }
+                    )
+                    AssistChip(
+                        onClick = { dueDate = keepTime(dueDate, DateUtils.plus(now, Calendar.WEEK_OF_YEAR, 1)) },
+                        label = { Text(stringResource(R.string.quick_next_week)) }
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                FieldLabel(stringResource(R.string.reminder), icon = rememberVectorPainter(Icons.Default.Notifications))
+                ChipRow {
+                    reminderOptions.forEach { minutes ->
+                        FilterChip(
+                            selected = reminderMinutes == minutes,
+                            onClick = { chooseReminder(minutes) },
+                            label = { Text(reminderLabel(minutes)) },
+                            modifier = Modifier.testTag("ReminderOption_${minutes ?: "None"}")
+                        )
                     }
-                    QuickDateChip(stringResource(R.string.quick_next_week)) {
-                        dueDate = keepTime(dueDate, DateUtils.plus(now, Calendar.WEEK_OF_YEAR, 1))
+                }
+                if (reminderMinutes != null && !notificationsAllowed) {
+                    Text(
+                        stringResource(R.string.reminder_permission_denied),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(top = 6.dp, start = 4.dp)
+                    )
+                }
+
+                Spacer(Modifier.height(16.dp))
+                FieldLabel(stringResource(R.string.repeat), icon = painterResource(R.drawable.ic_repeat))
+                ChipRow {
+                    RepeatRule.entries.forEach { rule ->
+                        FilterChip(
+                            selected = repeat == rule,
+                            onClick = { repeat = rule },
+                            label = { Text(rule.displayName) },
+                            modifier = Modifier.testTag("RepeatOption_${rule.name}")
+                        )
                     }
                 }
             }
+
+            ChecklistCard(items = checklist, onChange = { checklist = it })
+            Spacer(Modifier.height(8.dp))
         }
     }
 
@@ -376,21 +478,66 @@ private fun keepTime(current: Long, day: Long): Long =
     DateUtils.withTime(day, DateUtils.hourOf(current), DateUtils.minuteOf(current))
 
 @Composable
-private fun Section(title: String, content: @Composable () -> Unit) {
-    Column {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
-        )
-        content()
+private fun reminderLabel(minutes: Int?): String = stringResource(
+    when (minutes) {
+        null -> R.string.reminder_none
+        0 -> R.string.reminder_at_time
+        10 -> R.string.reminder_10_min
+        60 -> R.string.reminder_1_hour
+        else -> R.string.reminder_1_day
+    }
+)
+
+@Composable
+private fun bareFieldColors() = TextFieldDefaults.colors(
+    focusedContainerColor = Color.Transparent,
+    unfocusedContainerColor = Color.Transparent,
+    errorContainerColor = Color.Transparent,
+    focusedIndicatorColor = Color.Transparent,
+    unfocusedIndicatorColor = Color.Transparent,
+)
+
+@Composable
+private fun EditorCard(title: String, content: @Composable ColumnScope.() -> Unit) {
+    Card(
+        shape = MaterialTheme.shapes.large,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(16.dp).animateContentSize()) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 12.dp)
+            )
+            content()
+        }
     }
 }
 
 @Composable
-private fun PickerCard(label: String, value: String, icon: ImageVector, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    OutlinedCard(onClick = onClick, shape = RoundedCornerShape(14.dp), modifier = modifier) {
+private fun FieldLabel(text: String, icon: Painter? = null) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(start = 2.dp, bottom = 8.dp)) {
+        if (icon != null) {
+            Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun ChipRow(content: @Composable () -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier.horizontalScroll(rememberScrollState())
+    ) { content() }
+}
+
+@Composable
+private fun PickerCard(label: String, value: String, icon: Painter, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    OutlinedCard(onClick = onClick, shape = MaterialTheme.shapes.medium, modifier = modifier) {
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(14.dp)) {
             Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(10.dp))
@@ -403,6 +550,73 @@ private fun PickerCard(label: String, value: String, icon: ImageVector, onClick:
 }
 
 @Composable
-private fun QuickDateChip(label: String, onClick: () -> Unit) {
-    AssistChip(onClick = onClick, label = { Text(label) })
+private fun ChecklistCard(items: List<ChecklistItem>, onChange: (List<ChecklistItem>) -> Unit) {
+    var newItem by rememberSaveable { mutableStateOf("") }
+    fun addItem() {
+        if (newItem.isBlank()) return
+        onChange(items + ChecklistItem(newItem.trim()))
+        newItem = ""
+    }
+
+    EditorCard(stringResource(R.string.checklist)) {
+        if (items.isNotEmpty()) {
+            val done = items.count { it.done }
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(bottom = 4.dp)) {
+                LinearProgressIndicator(
+                    progress = { done.toFloat() / items.size },
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    stringResource(R.string.checklist_progress, done, items.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        items.forEachIndexed { index, item ->
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = item.done,
+                    onCheckedChange = { checked -> onChange(items.toMutableList().also { it[index] = item.copy(done = checked) }) },
+                    modifier = Modifier.testTag("ChecklistCheck_$index")
+                )
+                TextField(
+                    value = item.text,
+                    onValueChange = { text -> onChange(items.toMutableList().also { it[index] = item.copy(text = text) }) },
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        textDecoration = if (item.done) TextDecoration.LineThrough else null,
+                        color = if (item.done) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                    ),
+                    colors = bareFieldColors(),
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(onClick = { onChange(items.filterIndexed { i, _ -> i != index }) }) {
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = stringResource(R.string.checklist_remove),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = ::addItem, enabled = newItem.isNotBlank()) {
+                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.checklist_add))
+            }
+            TextField(
+                value = newItem,
+                onValueChange = { newItem = it },
+                placeholder = { Text(stringResource(R.string.checklist_add)) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = { addItem() }),
+                colors = bareFieldColors(),
+                modifier = Modifier
+                    .weight(1f)
+                    .testTag("ChecklistNewItem")
+            )
+        }
+    }
 }

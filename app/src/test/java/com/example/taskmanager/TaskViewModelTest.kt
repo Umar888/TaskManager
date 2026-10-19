@@ -1,8 +1,10 @@
 package com.example.taskmanager
 
+import com.example.taskmanager.data.model.RepeatRule
 import com.example.taskmanager.data.model.Task
 import com.example.taskmanager.data.model.TaskStatus
 import com.example.taskmanager.data.repository.TaskRepository
+import com.example.taskmanager.reminder.ReminderScheduler
 import com.example.taskmanager.ui.tasks.TaskEvent
 import com.example.taskmanager.ui.tasks.TaskViewModel
 import com.google.common.truth.Truth.assertThat
@@ -28,7 +30,12 @@ class TaskViewModelTest {
         val tasks = MutableStateFlow(initial)
         override val allTasks: Flow<List<Task>> = tasks
         override fun observeTask(id: Int) = tasks.map { list -> list.firstOrNull { it.id == id } }
-        override suspend fun save(task: Task) = tasks.update { list -> list.filterNot { it.id == task.id } + task }
+        override suspend fun getTask(id: Int) = tasks.value.firstOrNull { it.id == id }
+        override suspend fun save(task: Task): Int {
+            val id = if (task.id != 0) task.id else (tasks.value.maxOfOrNull { it.id } ?: 0) + 1
+            tasks.update { list -> list.filterNot { it.id == id } + task.copy(id = id) }
+            return id
+        }
         override suspend fun delete(task: Task) = tasks.update { list -> list.filterNot { it.id == task.id } }
         override suspend fun deleteCompleted() = tasks.update { list -> list.filterNot { it.isCompleted } }
     }
@@ -91,5 +98,54 @@ class TaskViewModelTest {
         TaskViewModel(repo).saveTask(Task(5, "  Title  ", "  notes ", dueDate = due))
         assertThat(repo.tasks.value.single().title).isEqualTo("Title")
         assertThat(repo.tasks.value.single().description).isEqualTo("notes")
+    }
+
+    private class RecordingScheduler : ReminderScheduler {
+        val synced = mutableListOf<Task>()
+        val cancelled = mutableListOf<Int>()
+        override fun sync(task: Task) { synced += task }
+        override fun cancel(taskId: Int) { cancelled += taskId }
+    }
+
+    @Test
+    fun `completing a repeating task creates the next one and undo removes it`() = runTest {
+        val daily = open.copy(repeat = RepeatRule.DAILY.toString())
+        val repo = InMemoryRepo(listOf(daily))
+        val vm = TaskViewModel(repo)
+
+        vm.toggleCompleted(daily)
+        val event = vm.events.first() as TaskEvent.StatusChanged
+        val next = event.nextOccurrence!!
+        assertThat(repo.tasks.value).hasSize(2)
+        assertThat(next.isCompleted).isFalse()
+        assertThat(next.dueDate).isEqualTo(RepeatRule.DAILY.next(daily.dueDate))
+
+        vm.undo(event)
+        assertThat(repo.tasks.value).containsExactly(daily)
+    }
+
+    @Test
+    fun `completing a one-off task creates nothing`() = runTest {
+        val repo = InMemoryRepo(listOf(open))
+        val vm = TaskViewModel(repo)
+
+        vm.toggleCompleted(open)
+        val event = vm.events.first() as TaskEvent.StatusChanged
+        assertThat(event.nextOccurrence).isNull()
+        assertThat(repo.tasks.value).hasSize(1)
+    }
+
+    @Test
+    fun `saving syncs the reminder with the generated id and delete cancels it`() = runTest {
+        val repo = InMemoryRepo(emptyList())
+        val scheduler = RecordingScheduler()
+        val vm = TaskViewModel(repo, scheduler)
+
+        vm.saveTask(Task(title = "Call", description = null, dueDate = due, reminderMinutes = 10))
+        val saved = repo.tasks.value.single()
+        assertThat(scheduler.synced.single().id).isEqualTo(saved.id)
+
+        vm.deleteTask(saved)
+        assertThat(scheduler.cancelled).containsExactly(saved.id)
     }
 }

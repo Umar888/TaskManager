@@ -1,16 +1,22 @@
 package com.example.taskmanager
 
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.taskmanager.ui.navigation.Screen
 import com.example.taskmanager.ui.editor.TaskEditorScreen
@@ -47,14 +53,17 @@ class TaskScreenTest {
         }
     }
 
-    private fun addTask(title: String, description: String, priority: String) {
+    private fun addTask(title: String, description: String, priority: String, extra: () -> Unit = {}) {
         composeTestRule.onNodeWithTag("AddTask").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithTag("TitleField").performTextInput(title)
         composeTestRule.onNodeWithTag("DescriptionField").performTextInput(description)
-        composeTestRule.onNodeWithTag("EditorPriority_$priority").performClick()
-        composeTestRule.onNodeWithTag("DatePickerField").performClick()
+        // like a user would: dismiss the keyboard before reaching for the fields below it
+        Espresso.closeSoftKeyboard()
+        composeTestRule.onNodeWithTag("EditorPriority_$priority").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("DatePickerField").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("DatePickerOK").performClick()
+        extra()
         composeTestRule.onNodeWithTag("SaveTask").performClick()
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText(title).assertExists()
@@ -140,5 +149,52 @@ class TaskScreenTest {
         composeTestRule.waitForIdle()
         composeTestRule.onNodeWithText("Old title updated").assertDoesNotExist()
         composeTestRule.onNodeWithText("Undo").assertExists()
+    }
+
+    @Test
+    fun checklistProgress_isShownOnTheCard() {
+        addTask("Groceries", "Weekly shop", "Medium") {
+            listOf("Milk", "Eggs").forEach { item ->
+                composeTestRule.onNodeWithTag("ChecklistNewItem").performScrollTo().performTextInput(item)
+                composeTestRule.onNodeWithTag("ChecklistNewItem").performImeAction()
+            }
+            composeTestRule.onNodeWithTag("ChecklistCheck_0").performScrollTo().performClick()
+        }
+        composeTestRule.onNodeWithText("1/2").assertExists()
+    }
+
+    @Test
+    fun statTile_filtersByStatus() {
+        addTask("Open task", "Not done yet", "Low")
+
+        composeTestRule.onNodeWithTag("StatTile_COMPLETED").performClick()
+        composeTestRule.onNodeWithText("No matching tasks").assertIsDisplayed()
+        // tapping the active tile again clears the filter
+        composeTestRule.onNodeWithTag("StatTile_COMPLETED").performClick()
+        composeTestRule.onNodeWithText("Open task").assertExists()
+    }
+
+    @Test
+    fun completedSection_canBeCollapsed() {
+        addTask("Finish me", "Then hide me", "High")
+        composeTestRule.onNodeWithTag("TaskCheck_0").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("Section_COMPLETED").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Finish me").assertDoesNotExist()
+        composeTestRule.onNodeWithTag("Section_COMPLETED").performClick()
+        composeTestRule.onNodeWithText("Finish me").assertExists()
+    }
+
+    @Test
+    fun completingRepeatingTask_createsNextOccurrence() {
+        addTask("Water plants", "Every day", "Medium") {
+            composeTestRule.onNodeWithTag("RepeatOption_DAILY").performScrollTo().performClick()
+            composeTestRule.onNodeWithTag("RepeatOption_DAILY").assertIsSelected()
+        }
+        composeTestRule.onNodeWithTag("TaskCheck_0").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onAllNodesWithText("Water plants").assertCountEquals(2)
     }
 }

@@ -15,14 +15,14 @@ class FakeTaskRepository(initial: List<Task> = emptyList()) : TaskRepository {
 
     override fun observeTask(id: Int): Flow<Task?> = tasks.map { list -> list.firstOrNull { it.id == id } }
 
-    override suspend fun save(task: Task) {
+    override suspend fun getTask(id: Int): Task? = tasks.value.firstOrNull { it.id == id }
+
+    override suspend fun save(task: Task): Int {
+        val id = if (task.id != 0) task.id else nextId++
         tasks.update { list ->
-            if (task.id != 0 && list.any { it.id == task.id }) {
-                list.map { if (it.id == task.id) task else it }
-            } else {
-                list + task.copy(id = if (task.id != 0) task.id else nextId++)
-            }
+            if (list.any { it.id == id }) list.map { if (it.id == id) task else it } else list + task.copy(id = id)
         }
+        return id
     }
 
     override suspend fun delete(task: Task) = tasks.update { list -> list.filterNot { it.id == task.id } }

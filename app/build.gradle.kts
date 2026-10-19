@@ -16,8 +16,8 @@ android {
         applicationId = "com.example.taskmanager"
         minSdk = 26
         targetSdk = 37
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -55,6 +55,10 @@ android {
     buildFeatures {
         compose = true
     }
+    // lets MigrationTestHelper read the exported Room schemas
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
     packaging {
         resources {
             excludes += "META-INF/LICENSE.md"
@@ -76,7 +80,10 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.datastore.preferences)
+    implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
+    // room-testing's schema reader needs serialization >= 1.8.1, and test APKs must match the app's versions
+    implementation(platform(libs.kotlinx.serialization.bom))
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
@@ -102,6 +109,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     androidTestImplementation(libs.androidx.navigation.testing)
     androidTestImplementation(libs.mockk.android)
+    androidTestImplementation(libs.androidx.room.testing)
 
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)

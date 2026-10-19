@@ -11,6 +11,8 @@ import com.example.taskmanager.data.model.TaskPriority
 import com.example.taskmanager.data.model.TaskStatus
 import com.example.taskmanager.data.repository.RoomTaskRepository
 import com.example.taskmanager.data.repository.TaskRepository
+import com.example.taskmanager.reminder.ReminderScheduler
+import com.example.taskmanager.reminder.WorkManagerReminderScheduler
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,6 +29,9 @@ import kotlinx.coroutines.launch
 data class TaskListUiState(
     val isLoading: Boolean = true,
     val tasks: List<Task> = emptyList(),
+    /** Non-null only in the default due-date view without filters; otherwise [tasks] is shown flat. */
+    val sections: List<Pair<TaskSection, List<Task>>>? = null,
+    val collapsedSections: Set<TaskSection> = emptySet(),
     val stats: TaskStats = TaskStats(),
     val filters: TaskFilters = TaskFilters(),
 ) {
@@ -36,20 +41,28 @@ data class TaskListUiState(
 /** One-off events the list screen turns into snackbars with an Undo action. */
 sealed interface TaskEvent {
     data class Deleted(val task: Task) : TaskEvent
-    data class StatusChanged(val previous: Task, val newStatus: TaskStatus) : TaskEvent
+    /** [nextOccurrence] is the follow-up created when a repeating task was completed; undo removes it. */
+    data class StatusChanged(val previous: Task, val newStatus: TaskStatus, val nextOccurrence: Task? = null) : TaskEvent
     data class ClearedCompleted(val tasks: List<Task>) : TaskEvent
 }
 
-class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
+class TaskViewModel(
+    private val repository: TaskRepository,
+    private val reminders: ReminderScheduler = ReminderScheduler.None,
+) : ViewModel() {
 
     private val filters = MutableStateFlow(TaskFilters())
+    private val collapsed = MutableStateFlow(setOf<TaskSection>())
 
     val uiState: StateFlow<TaskListUiState> =
-        combine(repository.allTasks, filters) { tasks, filters ->
+        combine(repository.allTasks, filters, collapsed) { tasks, filters, collapsed ->
             val now = System.currentTimeMillis()
+            val visible = filters.apply(tasks, now)
             TaskListUiState(
                 isLoading = false,
-                tasks = filters.apply(tasks, now),
+                tasks = visible,
+                sections = if (filters.sort == SortOrder.DUE_SOONEST && !filters.isActive) groupIntoSections(visible, now) else null,
+                collapsedSections = collapsed,
                 stats = TaskStats.from(tasks, now),
                 filters = filters,
             )
@@ -75,13 +88,26 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     fun setSortOrder(sort: SortOrder) = filters.update { it.copy(sort = sort) }
     fun clearFilters() = filters.update { TaskFilters(sort = it.sort) }
 
+    fun toggleSection(section: TaskSection) = collapsed.update { if (section in it) it - section else it + section }
+
     fun saveTask(task: Task) {
-        viewModelScope.launch { repository.save(task.copy(title = task.title.trim(), description = task.description?.trim())) }
+        viewModelScope.launch {
+            val previous = if (task.id != 0) repository.getTask(task.id) else null
+            val cleaned = task.copy(title = task.title.trim(), description = task.description?.trim())
+            val saved = cleaned.copy(id = repository.save(cleaned))
+            reminders.sync(saved)
+            // completing a repeating task from the editor schedules the next one, same as the checkbox
+            if (previous != null && !previous.isCompleted && saved.isCompleted) {
+                val next = spawnNextOccurrence(saved)
+                if (next != null) _events.send(TaskEvent.StatusChanged(previous, TaskStatus.COMPLETED, next))
+            }
+        }
     }
 
     fun deleteTask(task: Task) {
         viewModelScope.launch {
             repository.delete(task)
+            reminders.cancel(task.id)
             _events.send(TaskEvent.Deleted(task))
         }
     }
@@ -89,8 +115,11 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     fun toggleCompleted(task: Task) {
         val newStatus = if (task.isCompleted) TaskStatus.PENDING else TaskStatus.COMPLETED
         viewModelScope.launch {
-            repository.save(task.copy(status = newStatus.toString()))
-            _events.send(TaskEvent.StatusChanged(task, newStatus))
+            val updated = task.copy(status = newStatus.toString())
+            repository.save(updated)
+            reminders.sync(updated)
+            val next = if (newStatus == TaskStatus.COMPLETED) spawnNextOccurrence(updated) else null
+            _events.send(TaskEvent.StatusChanged(task, newStatus, next))
         }
     }
 
@@ -107,18 +136,39 @@ class TaskViewModel(private val repository: TaskRepository) : ViewModel() {
     fun undo(event: TaskEvent) {
         viewModelScope.launch {
             when (event) {
-                is TaskEvent.Deleted -> repository.save(event.task)
-                is TaskEvent.StatusChanged -> repository.save(event.previous)
+                is TaskEvent.Deleted -> restore(event.task)
+                is TaskEvent.StatusChanged -> {
+                    event.nextOccurrence?.let {
+                        repository.delete(it)
+                        reminders.cancel(it.id)
+                    }
+                    restore(event.previous)
+                }
                 is TaskEvent.ClearedCompleted -> event.tasks.forEach { repository.save(it) }
             }
         }
+    }
+
+    private suspend fun restore(task: Task) {
+        repository.save(task)
+        reminders.sync(task)
+    }
+
+    private suspend fun spawnNextOccurrence(completed: Task): Task? {
+        val next = completed.nextOccurrence() ?: return null
+        val saved = next.copy(id = repository.save(next))
+        reminders.sync(saved)
+        return saved
     }
 
     companion object {
         val Factory = viewModelFactory {
             initializer {
                 val app = this[APPLICATION_KEY]!!
-                TaskViewModel(RoomTaskRepository(TaskDatabase.getDatabase(app).taskDao()))
+                TaskViewModel(
+                    RoomTaskRepository(TaskDatabase.getDatabase(app).taskDao()),
+                    WorkManagerReminderScheduler(app),
+                )
             }
         }
     }
