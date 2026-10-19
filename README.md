@@ -3,6 +3,18 @@
 A clean, offline-first task manager for Android, built entirely with **Jetpack Compose** and **Material 3**.
 Plan your day, track progress at a glance, and keep work organised with filters, search, and swipe gestures.
 
+<p align="center">
+  <img src="docs/screenshots/list-light.png" alt="Task list (light)" width="260" />
+  <img src="docs/screenshots/list-dark.png" alt="Task list (dark)" width="260" />
+  <img src="docs/screenshots/editor.png" alt="Task editor" width="260" />
+</p>
+
+---
+
+## 📥 Download
+
+Grab the latest signed APK from [**GitHub Releases**](https://github.com/Umar888/TaskManager/releases/latest) and open it on your phone (you may need to allow installs from your browser or file manager). Requires Android 8.0 (API 26) or newer.
+
 ---
 
 ## ✨ Features

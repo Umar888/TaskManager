@@ -52,14 +52,7 @@ util              DateUtils
 - **Icons:** only `material-icons-core` is included (no extended set)
 - **Commits:** no AI attribution lines in commit messages
 
-## Handoff status (2026-10-20)
+## Release status (2026-10-20)
 
-Done and pushed (`955a2d0`): toolchain upgrade, bug fixes, UI redesign, adaptive icon, package restructure, README rewrite.
-16/16 unit tests pass. UI tests: 4/6 passed on device; the other 2 had test-side issues (cursor position, tag placement) that are fixed but **not yet re-run on a device**.
-
-In progress, not yet committed:
-1. `app/build.gradle.kts`: release `signingConfigs` (reads `keystore.properties`) + `isMinifyEnabled`/`isShrinkResources`. Verify `./gradlew assembleRelease` succeeds, then install the release APK on the emulator and smoke-test it (R8 can break things debug builds hide)
-2. Run all 6 UI tests on the `Pixel_9_Pro_XL` emulator (it was wiped to free storage)
-3. Screenshots for the README: sample DB is at the session scratchpad (recreate if missing: 8 tasks, mixed status/priority, one overdue). Push it with `adb push` + `run-as com.example.taskmanager cp ... databases/app_database`, capture list (light + dark via `adb shell cmd uimode night yes`) and editor with `adb exec-out screencap -p`, save to `docs/screenshots/`, add an image row under the README intro
-4. Publish the signed APK: `gh release create v2.0 app/build/outputs/apk/release/app-release.apk` (rename to `TaskManager-v2.0.apk`), then add a "Download" section to the README linking the release
-5. Commit and push to `main`
+v2.0 is released (signed APK on GitHub Releases as `TaskManager-v2.0.apk`). 16/16 unit tests and 6/6 UI tests pass on `Pixel_9_Pro_XL`; the R8-minified release build was smoke-tested on the emulator.
+README screenshots live in `docs/screenshots/`. To regenerate: build a seeded `app_database` on the host from `app/schemas/.../<version>.json` (create SQL + `room_master_table` identity hash + `PRAGMA user_version`), `adb push` it, then `run-as com.example.taskmanager cp` it into `databases/` (debug build only; release isn't debuggable).
